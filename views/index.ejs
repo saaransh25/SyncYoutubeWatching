@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Rooms Available to Join</title>
+  </head>
+  <body>
+    <h1>Rooms Available to Join</h1>
+    <ul>
+    <% rooms.forEach (function (room) { %> 	
+    	<li><a href="/rooms/show/<%= room.name %>"><%= room.name %>
+    	<form method="post" action="/rooms/destroy">
+    		<input type="hidden" name="roomid" value="<%= room.name %>"/>
+    		<button type="submit" >Delete</button>
+    	</form>
+    	</li>
+
+
+    <% }); %>
+	</ul>
+  </body>
+</html>

@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+  <head>
+      <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
+  </head>
+  <body>
+    <!-- 1. The <iframe> (and video player) will replace this <div> tag. -->
+
+    <h1>Room: <%= room.name %></h1>
+    <input type="hidden" id="name" value="<%= room.name %>"/>
+    <input type="hidden" id="seek" value="<%= room.seek %>"/>
+    <input type="hidden" id="state" value="<%= room.state %>"/>        
+    <form>
+      <input id="videolink" name="videolink" placeholder="Enter video link" value="<%= room.videoid %>"/>
+      <button type="button" id="videosubmitbutton">Play and Share!</button>
+    </form>
+    <div id="player"></div>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+      var socket=io();
+      var room=$('#name').val();
+      var STATE_CHANGED_BY_SERVER=false;
+
+     socket.on('connect', function(data) {
+        socket.emit('connectme', $('#name').val());
+      });
+
+      var tag = document.createElement('script');
+
+      tag.src = "http://www.youtube.com/iframe_api";
+      var firstScriptTag = document.getElementsByTagName('script')[0];
+      firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+      var player;
+
+      function onYouTubeIframeAPIReady() {
+        player = new YT.Player('player', {
+          height: '390',
+          width: '640',
+          videoId: $('#videolink').val() || 'M7lc1UVf-VE',
+          events: {
+            'onReady': onPlayerReady,
+            'onStateChange': onPlayerStateChange
+          }
+        });
+      }
+
+      socket.on('updatestate', function (state) {
+        console.log("Event received");
+        STATE_CHANGED_BY_SERVER=true;
+        if (state==YT.PlayerState.PLAYING)
+          player.playVideo();
+        else player.stopVideo();        
+      });
+
+      function onPlayerReady(event) {
+                STATE_CHANGED_BY_SERVER=true;
+        player.seekTo($('#seek').val(), true);
+        var state=$('#state').val()
+        if (state==YT.PlayerState.PLAYING)
+          player.playVideo();
+        else player.stopVideo();
+      }
+
+      function onPlayerStateChange(event) {
+        console.log(event.data);
+        if (event.data!=YT.PlayerState.PLAYING && event.data!=YT.PlayerState.PAUSED) return;
+        if (!STATE_CHANGED_BY_SERVER) {
+          STATE_CHANGED_BY_SERVER=false;
+          console.log("Event emitted");
+          socket.emit('updatestate', {state: event.data, room: room});
+        }
+        STATE_CHANGED_BY_SERVER=false;
+      }
+
+
+
+      $('#videosubmitbutton').on('click', function () {
+          player.loadVideoById($('#videolink').val());
+      });
+
+
+    </script>
+  </body>
+</html
