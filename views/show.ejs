@@ -20,6 +20,9 @@
       var socket=io();
       var room=$('#name').val();
       var STATE_CHANGED_BY_SERVER=false;
+      var requests=[];
+      var prevstate={};
+      var videoid=$('#videolink').val();
 
      socket.on('connect', function(data) {
         socket.emit('connectme', $('#name').val());
@@ -39,52 +42,115 @@
           videoId: $('#videolink').val() || 'M7lc1UVf-VE',
           events: {
             'onReady': onPlayerReady,
-            'onStateChange': onPlayerStateChange
           }
         });
       }
 
       socket.on('updatestate', function (state) {
-        console.log("Event received");
-        STATE_CHANGED_BY_SERVER=true;
-        if (state==YT.PlayerState.PLAYING)
-          player.playVideo();
-        else if (state==YT.PlayerState.ENDED)
-          player.stopVideo();
-        else player.pauseVideo();        
+        requests.push({state: state, requestedby: 'SERVER'});
       });
 
-      function onPlayerReady(event) {
-        STATE_CHANGED_BY_SERVER=true;
-        player.seekTo($('#seek').val(), true);
-        var state=$('#state').val()
-        if (state==YT.PlayerState.PLAYING)
-          player.playVideo();
-        else player.pauseVideo();
-      }
 
-      function onPlayerStateChange(event) {
-        console.log(event);
-        if (event.data!=1 && event.data!=2 && event.data!=0) return;
-        if (!STATE_CHANGED_BY_SERVER) {
-          STATE_CHANGED_BY_SERVER=false;
-          console.log("Event emitted");
-          socket.emit('updatestate', {state: event.data, room: room, seek: player.getCurrentTime()});
-        }
-        STATE_CHANGED_BY_SERVER=false;
-      }
 
 
 
       $('#videosubmitbutton').on('click', function () {
           videoid=$('#videolink').val();
-          player.loadVideoById(videoid);
-          socket.emit('updatevideo', {videoid: videoid, room: room});
+          requests.push({state: {videoid: videoid, room: room}, requestedby: 'SERVER'});
       });
 
-      socket.on('updatevideo', function (video) {
-          player.loadVideoById(video);
-      });
+
+
+
+
+      function onPlayerReady(event) {
+
+        var state=$('#state').val()
+        if (state==YT.PlayerState.PLAYING)
+          playVideo();
+        else pauseVideo();
+        prevstate.state=state;
+        prevstate.seek=$('#seek').val();
+        prevstate.videoid=$('#videolink').val();
+        prevstate.lastupdated=Date.now();
+        player.seekTo($('#seek').val(), true);
+        setInterval(checkforuserrequest, 1000);
+        setInterval(updateplayerstate,3000);
+      }
+
+      function checkforuserrequest() {
+        var playerstate = player.getPlayerState();
+        var seek = player.getCurrentTime();
+        if (playerstate!=YT.PlayerState.PLAYING && playerstate!=YT.PlayerState.PAUSED) return;
+        var currstate={state: playerstate, seek: seek, videoid: videoid, lastupdated: Date.now()};
+        if (!isEqual(currstate,prevstate)) {
+          console.log(currstate);
+          console.log(prevstate);
+          requests.push({state: currstate, requestedby: 'USER'});
+          prevstate.state=currstate.state;
+          prevstate.seek=currstate.seek;
+          prevstate.videoid=currstate.videoid;
+          prevstate.lastupdated=currstate.lastupdated;
+        }
+      }
+
+      function isEqual(currstate, prevstate) {
+
+        //console.log(Math.abs(currstate.seek-prevstate.seek));
+        if (currstate.state!=prevstate.state || currstate.videoid!= prevstate.videoid) {
+          //console.log("Condition1 failed");
+          return false;
+        }
+        if (currstate.state==YT.PlayerState.PAUSED) {
+          //console.log("Inside condition 2");
+          return Math.abs(currstate.seek-prevstate.seek)<5;
+        }
+        //If current state is playing, do following:
+        //console.log("Condition3 failed");
+        var newseek=prevstate.seek+Math.abs(currstate.lastupdated-prevstate.lastupdated)/1000;
+        if (Math.abs(currstate.seek-newseek)>5) {console.log("returning false"); return false;}
+        return true;
+      }
+
+
+      function updateplayerstate() {
+        if (requests.length==0) return;
+        req=requests.pop();
+        console.log(req);
+        if (req.requestedby =='USER') {
+          req.state.room=$('#name').val();
+          socket.emit('updatestate',req.state);
+        }
+        else {//Request by Server
+          if (req.state.videoid!=prevstate.videoid) {
+            prevstate.videoid=req.state.videoid;
+            player.loadVideoById(req.state.videoid);
+          }
+          player.seekTo(req.state.seek, true);
+          prevstate.seek=req.state.seek;
+          
+          if (player.getPlayerState()!=req.state.state) {
+            if (req.state.state==YT.PlayerState.PLAYING) {
+              playVideo();
+            }
+            else pauseVideo();
+            prevstate.state=req.state.state;
+          }
+          prevstate.lastupdated=Date.now();
+        }
+        requests=[];
+      }
+
+      function playVideo() {
+        player.playVideo();
+      }
+
+      function pauseVideo() {
+        player.pauseVideo();
+      }
+
+
+
 
 
 
