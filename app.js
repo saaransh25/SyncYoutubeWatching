@@ -10,10 +10,7 @@ var users = require('./routes/users');
 var rooms = require('./routes/rooms');
 
 var app = express();
-var uristring =
-process.env.MONGOLAB_URI ||
-process.env.MONGOHQ_URL ||
-'mongodb://localhost/test';
+var uristring = process.env.MONGOLAB_URI || process.env.MONGOHQ_URL || 'mongodb://localhost/test';
 var mongoose = require('mongoose');
 mongoose.connect(uristring, function (err, res) {
   if (err) {
@@ -71,10 +68,11 @@ app.use(function(err, req, res, next) {
 });
 
 var http = require('http').Server(app);
+var httpport = process.env.PORT || 3000;
 var io = require('socket.io')(http);
 
-http.listen(3000, function(){
-    console.log('listening on *:3000');
+http.listen(httpport, function(){
+    console.log('listening on *:'+httpport);
 });
 
 var room=require('./models/rooms.js');
