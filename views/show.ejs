@@ -6,23 +6,22 @@
   <body>
     <!-- 1. The <iframe> (and video player) will replace this <div> tag. -->
 
-    <h1>Room: <%= room.name %></h1>
+    <h4>Room: <%= room.name %></h1>
     <input type="hidden" id="name" value="<%= room.name %>"/>
     <input type="hidden" id="seek" value="<%= room.seek %>"/>
     <input type="hidden" id="state" value="<%= room.state %>"/>        
     <form>
-      <input id="videolink" name="videolink" placeholder="Enter video link" value="<%= room.videoid %>"/>
+      <input id="videolink" name="videolink" placeholder="Enter video link"/>
       <button type="button" id="videosubmitbutton">Play and Share!</button>
     </form>
+    <h1>Currently playing: <%= room.videoid %></h1>
+    <input id="videolinkval" type="hidden" value="<%= room.videoid %>"/>
     <div id="player"></div>
     <script src="/socket.io/socket.io.js"></script>
     <script>
       var socket=io();
       var room=$('#name').val();
-      var STATE_CHANGED_BY_SERVER=false;
-      var requests=[];
-      var prevstate={};
-      var videoid=$('#videolink').val();
+      var time;
 
      socket.on('connect', function(data) {
         socket.emit('connectme', $('#name').val());
@@ -35,126 +34,92 @@
       firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
       var player;
 
+
       function onYouTubeIframeAPIReady() {
         player = new YT.Player('player', {
           height: '390',
           width: '640',
-          videoId: $('#videolink').val() || 'M7lc1UVf-VE',
+          videoId: $('#videolinkval').val() || 'M7lc1UVf-VE',
           events: {
             'onReady': onPlayerReady,
+            'onStateChange': onPlayerStateChange
           }
         });
       }
 
       socket.on('updatestate', function (state) {
-        requests.push({state: state, requestedby: 'SERVER'});
+        var playerstate=player.getPlayerState();
+        
+        //time=state.seek;
+        if (state.state==playerstate) return;
+        if (state.state==YT.PlayerState.PLAYING)
+          player.playVideo();
+        else if (state.state==YT.PlayerState.ENDED)
+          player.stopVideo();
+        else player.pauseVideo();    
+        //player.seekTo(state.seek,true);    
       });
 
+      var processingseek=false;
+      socket.on('updateseek', function (seekto) {
+        var seek;
+        if (seekto.state==2) seek=seekto.seek;
+        else if (seekto.state==1) {
+          seek=seekto.seek+(Date.now()-seekto.lastupdated)/1000;
+        }
+        if (Math.abs(player.getCurrentTime()-seek)<5) return;
+        console.log("Update seek event received for + "+seek);
+        player.seekTo(seek,true);  
+        time=seek;
+        processingseek=true;//This is necessary as player.seekTo does not update the player state immediately
+      });
 
+      function onPlayerReady(event) {
+        var seek=$('#seek').val();
+        var state=$('#state').val();
+        player.seekTo(seek, true);
+        if (state==YT.PlayerState.PLAYING)
+          player.playVideo();
+        else player.pauseVideo();
+        time=seek;
+        setInterval(syncseek, 500);
+      }
 
+      function onPlayerStateChange(event) {
+        if (event.data!=1 && event.data!=2 && event.data!=0) return;
+        socket.emit('updatestate', {state: event.data, room: room, seek: player.getCurrentTime()});
+      }
+
+      function syncseek() {
+        var currtime=player.getCurrentTime();
+        var currstate=player.getPlayerState();
+        if (processingseek) {
+          if(Math.abs(time-currtime)<5) processingseek=false;
+          else return;
+        }
+        if (currstate!=1 && currstate!=2) return;
+        if (Math.abs(currtime-time)>5) {
+          socket.emit('updateseek',{seek: currtime, room: room, state: currstate, lastupdated: Date.now()});
+          console.log("Update seek event emitted with time = "+time+"and current time = "+currtime);
+        }
+        time=currtime;
+      }
 
 
       $('#videosubmitbutton').on('click', function () {
           videoid=$('#videolink').val();
-          requests.push({state: {videoid: videoid, room: room}, requestedby: 'SERVER'});
+          player.loadVideoById(videoid);
+          socket.emit('updatevideo', {videoid: videoid, room: room});
       });
 
-
-
-
-
-      function onPlayerReady(event) {
-
-        var state=$('#state').val()
-        if (state==YT.PlayerState.PLAYING)
-          playVideo();
-        else pauseVideo();
-        prevstate.state=state;
-        prevstate.seek=$('#seek').val();
-        prevstate.videoid=$('#videolink').val();
-        prevstate.lastupdated=Date.now();
-        player.seekTo($('#seek').val(), true);
-        setInterval(checkforuserrequest, 1000);
-        setInterval(updateplayerstate,3000);
-      }
-
-      function checkforuserrequest() {
-        var playerstate = player.getPlayerState();
-        var seek = player.getCurrentTime();
-        if (playerstate!=YT.PlayerState.PLAYING && playerstate!=YT.PlayerState.PAUSED) return;
-        var currstate={state: playerstate, seek: seek, videoid: videoid, lastupdated: Date.now()};
-        if (!isEqual(currstate,prevstate)) {
-          console.log(currstate);
-          console.log(prevstate);
-          requests.push({state: currstate, requestedby: 'USER'});
-          prevstate.state=currstate.state;
-          prevstate.seek=currstate.seek;
-          prevstate.videoid=currstate.videoid;
-          prevstate.lastupdated=currstate.lastupdated;
-        }
-      }
-
-      function isEqual(currstate, prevstate) {
-
-        //console.log(Math.abs(currstate.seek-prevstate.seek));
-        if (currstate.state!=prevstate.state || currstate.videoid!= prevstate.videoid) {
-          //console.log("Condition1 failed");
-          return false;
-        }
-        if (currstate.state==YT.PlayerState.PAUSED) {
-          //console.log("Inside condition 2");
-          return Math.abs(currstate.seek-prevstate.seek)<5;
-        }
-        //If current state is playing, do following:
-        //console.log("Condition3 failed");
-        var newseek=prevstate.seek+Math.abs(currstate.lastupdated-prevstate.lastupdated)/1000;
-        if (Math.abs(currstate.seek-newseek)>5) {console.log("returning false"); return false;}
-        return true;
-      }
-
-
-      function updateplayerstate() {
-        if (requests.length==0) return;
-        req=requests.pop();
-        console.log(req);
-        if (req.requestedby =='USER') {
-          req.state.room=$('#name').val();
-          socket.emit('updatestate',req.state);
-        }
-        else {//Request by Server
-          if (req.state.videoid!=prevstate.videoid) {
-            prevstate.videoid=req.state.videoid;
-            player.loadVideoById(req.state.videoid);
-          }
-          player.seekTo(req.state.seek, true);
-          prevstate.seek=req.state.seek;
-          
-          if (player.getPlayerState()!=req.state.state) {
-            if (req.state.state==YT.PlayerState.PLAYING) {
-              playVideo();
-            }
-            else pauseVideo();
-            prevstate.state=req.state.state;
-          }
-          prevstate.lastupdated=Date.now();
-        }
-        requests=[];
-      }
-
-      function playVideo() {
-        player.playVideo();
-      }
-
-      function pauseVideo() {
-        player.pauseVideo();
-      }
-
-
-
+      socket.on('updatevideo', function (video) {
+          player.loadVideoById(video);
+          time=0;
+      });
 
 
 
 
     </script>
   </body>
-</html
+</html>

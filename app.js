@@ -76,15 +76,15 @@ io.on('connection',function (socket) {
       socket.join(room);
     });
 
-    socket.on('updatestate', function(roomclient) {
-      socket.broadcast.to(roomclient.room).emit('updatestate',roomclient);
-      room.findOne({name: roomclient.room}, function (err, roomobj) {
+
+    socket.on('updatestate', function(state) {
+      socket.broadcast.to(state.room).emit('updatestate',{state: state.state});
+      room.findOne({name: state.room}, function (err, roomobj) {
         if (err) console.log("room not found");
         else {
           if (roomobj) {
-            roomobj.state=roomclient.state || roomobj.state;
-            roomobj.seek=roomclient.seek || roomobj.seek;
-            roomobj.videoid=roomclient.videoid || roomobj.videoid;
+            roomobj.state=state.state;
+            roomobj.seek=state.seek;
             roomobj.save();
           }
           else {
@@ -94,14 +94,30 @@ io.on('connection',function (socket) {
       });      
     });
 
+    socket.on('updatevideo', function(video) {
+      socket.broadcast.to(video.room).emit('updatevideo',video.videoid);
+      room.findOne({name: video.room}, function (err, room) {
+        if (err) console.log("room not found");
+        else {
+          room.videoid=video.videoid;
+          room.seek=0;
+          room.state=1;
+          room.save();
+        }
+      });
+    });
+
+    socket.on('updateseek', function(seekto) {
+      socket.broadcast.to(seekto.room).emit('updateseek',seekto);
+      room.findOne({name: seekto.room}, function (err, room) {
+        if (err) console.log("room not found");
+        else {
+          room.seek=seekto.seek;
+          room.save();
+        }
+      });
+    });
+
 });
-
-
-
-
-io.on('disconnection',function(socket) {
-
-})
-
 
 module.exports = app;
