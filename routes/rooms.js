@@ -2,23 +2,25 @@ var express = require('express');
 var router = express.Router();
 var room=require('../models/rooms.js');
 var DEFAULT_VIDEO='M7lc1UVf-VE';
+var anoncount=1;
 
 router.get('/', function(req, res) {
 	room.find({}, function (err,roomtorender) {
 		if (err) res.render('error', {message: 'Rooms not found', error: {}});
 		else {
-			res.render('index', {rooms: roomtorender});
+			res.render('./rooms/index.ejs', {rooms: roomtorender});
 		}
 	});
 });
 
 router.get('/show/:roomid',function(req,res) {
 	roomid=req.params.roomid;
-	room.findOne({name: roomid}, function (err,roomtorender) {
+	room.findOne({_id: roomid}, function (err,roomtorender) {
 		if (roomtorender) {
 			roomobj={};
 			roomobj.name=roomtorender.name;
 			roomobj.state=roomtorender.state;
+			roomobj.id=roomtorender.id;
 			if (roomobj.state==1) {//Player is playing
 				roomobj.seek=roomtorender.seek+Math.abs(Date.now()-roomtorender.updated_at)/1000;
 			}
@@ -26,7 +28,7 @@ router.get('/show/:roomid',function(req,res) {
 				roomobj.seek=roomtorender.seek;
 			}
 			roomobj.videoid=roomtorender.videoid;
-			res.render('show', {room: roomobj});
+			res.render('./rooms/show.ejs', {room: roomobj});
 		}
 		else {
 			res.render('error', {message: "Room not found!", error: {}});	
@@ -35,34 +37,24 @@ router.get('/show/:roomid',function(req,res) {
 });
 
 router.get('/new', function(req,res) {
-	res.sendfile('./public/new.html');
+	res.render('./rooms/new.ejs');
 });
 
-router.get('/edit/:id', function(req,res) {
-
-});
 
 router.post('/create', function(req, res) {
-	roomid=req.body.name;
-	room.find({name: roomid}, function (roomexists) {
-		if (roomexists) {
-			res.render('error', {message: "This room id already exists", error: {}});
-		}
-		else {
 			//Create new room
-			var newroom=new room({name: roomid, videoid: DEFAULT_VIDEO, seek: 0, state: 1});//State=1 means Player is playing
+			var newroom=new room({name: req.body.room || 'Anonymous Room'+ ++anoncount, 
+									description: req.body.description || '', 
+									videoid: DEFAULT_VIDEO, 
+									seek: 0, 
+									state: 1});//State=1 means Player is playing
+
 			newroom.save(function (err, newroom) {
-				if (err) res.render('error', {message: "Something went wrong", error: {}});
+				if (err) res.render('error', {message: "Something went wrong", error: err});
 				else {
-					res.redirect('show/'+roomid);
+					res.redirect('show/'+newroom.id);
 				}
 			});			
-		}
-	});
-});
-
-router.put('/update', function(req, res) {
-
 });
 
 router.delete('/destroy', function(req,res) {

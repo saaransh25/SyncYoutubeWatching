@@ -1,0 +1,130 @@
+<!-- <!DOCTYPE html> -->
+<%-contentFor('providedcss')%>
+<link href="/stylesheets/show.css" rel="stylesheet">
+<%-contentFor('body')%>
+<div class="container">
+  <h4 class="showheading">Room: <%= room.name %></h4>
+  <input type="hidden" id="roomid" value="<%= room.id %>"/>
+  <input type="hidden" id="name" value="<%= room.name %>"/>
+  <input type="hidden" id="seek" value="<%= room.seek %>"/>
+  <input type="hidden" id="state" value="<%= room.state %>"/>
+  <input id="videolinkval" type="hidden" value="<%= room.videoid %>"/>
+  <div class="row">
+  <form class="form-inline" role="search">
+    <div class="input-group col-sm-12">
+      <input type="search" class="form-control" id="videolink" name="videolink" placeholder="Enter video link">
+      <div class="input-group-btn">
+        <button class="btn btn-primary" type="button" id="videosubmitbutton">Play and Share!</button>
+      </div>
+    </div>
+  </form>
+  </div>
+  <div class="row">
+    <div id="player" class="col-sm-8 playerdiv"></div>
+    <div id="updatewindow" class="col-sm-4 update"></div>
+  </div>
+</div>
+
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+var socket=io();
+var roomid=$('#roomid').val();
+var time;
+var updatewindow=$('#updatewindow');
+var statemap = {'1': 'Playing', '2': 'Paused'};
+
+socket.on('connect', function(data) {
+  socket.emit('connectme', roomid);
+});
+
+var tag = document.createElement('script');
+
+tag.src = "http://www.youtube.com/iframe_api";
+var firstScriptTag = document.getElementsByTagName('script')[0];
+firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+var player;
+
+
+function onYouTubeIframeAPIReady() {
+  player = new YT.Player('player', {
+    height: '390',
+    width: '640',
+    videoId: $('#videolinkval').val() || 'M7lc1UVf-VE',
+    events: {
+      'onReady': onPlayerReady,
+      'onStateChange': onPlayerStateChange
+    }
+  });
+}
+
+socket.on('updatestate', function (state) {
+  var playerstate=player.getPlayerState();
+  if (state.state==playerstate) return;
+  if (state.state==YT.PlayerState.PLAYING)
+    player.playVideo();
+  else if (state.state==YT.PlayerState.ENDED)
+    player.stopVideo();
+  else player.pauseVideo();       
+  updatewindow.append('<p>Changing state to: '+statemap[state.state]+'</p>');
+});
+
+var processingseek=false;
+socket.on('updateseek', function (seekto) {
+  var seek;
+  if (seekto.state==2) seek=seekto.seek;
+  else if (seekto.state==1) {
+    seek=seekto.seek+(Date.now()-seekto.lastupdated)/1000;
+  }
+  if (Math.abs(player.getCurrentTime()-seek)<5) return;
+  console.log("Update seek event received for + "+seek);
+  player.seekTo(seek,true);  
+  updatewindow.append('<p>Seeking to: '+seek+'</p>');
+  time=seek;
+  processingseek=true;//This is necessary as player.seekTo does not update the player state immediately
+});
+
+function onPlayerReady(event) {
+  var seek=$('#seek').val();
+  var state=$('#state').val();
+  player.seekTo(seek, true);
+  if (state==YT.PlayerState.PLAYING)
+    player.playVideo();
+  else player.pauseVideo();
+  time=seek;
+  setInterval(syncseek, 500);
+}
+
+function onPlayerStateChange(event) {
+  if (event.data!=1 && event.data!=2 && event.data!=0) return;
+  socket.emit('updatestate', {state: event.data, roomid: roomid, seek: player.getCurrentTime()});
+}
+
+function syncseek() {
+  var currtime=player.getCurrentTime();
+  var currstate=player.getPlayerState();
+  if (processingseek) {
+    if(Math.abs(time-currtime)<5) processingseek=false;
+    else return;
+  }
+  if (currstate!=1 && currstate!=2) return;
+  if (Math.abs(currtime-time)>5) {
+    socket.emit('updateseek',{seek: currtime, roomid: roomid, state: currstate, lastupdated: Date.now()});
+    console.log("Update seek event emitted with time = "+time+"and current time = "+currtime);
+  }
+  time=currtime;
+}
+
+
+$('#videosubmitbutton').on('click', function () {
+  videoid=$('#videolink').val();
+  player.loadVideoById(videoid);
+  socket.emit('updatevideo', {videoid: videoid, roomid: roomid});
+});
+
+socket.on('updatevideo', function (video) {
+  player.loadVideoById(video);
+  time=0;
+  updatewindow.append('<p>User changed the video to videoid: '+video+'</p>');
+});
+</script>

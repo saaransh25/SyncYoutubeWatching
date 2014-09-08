@@ -4,6 +4,7 @@ var favicon = require('static-favicon');
 var logger = require('morgan');
 var cookieParser = require('cookie-parser');
 var bodyParser = require('body-parser');
+var expressLayouts = require('express-ejs-layouts');
 
 var routes = require('./routes/index');
 var users = require('./routes/users');
@@ -23,6 +24,8 @@ mongoose.connect(uristring, function (err, res) {
 // view engine setup
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'ejs');
+app.set('layout','./layout/layout.ejs');
+app.set("layout extractScripts", true);
 
 app.use(favicon());
 app.use(logger('dev'));
@@ -30,6 +33,7 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded());
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
+app.use(expressLayouts);
 
 app.use('/', routes);
 app.use('/users', users);
@@ -76,18 +80,16 @@ http.listen(httpport, function(){
 });
 
 var room=require('./models/rooms.js');
-
-
 io.on('connection',function (socket) {
  
-    socket.on('connectme', function(room) {
-      socket.join(room);
+    socket.on('connectme', function(roomid) {
+      socket.join(roomid);
     });
 
 
     socket.on('updatestate', function(state) {
-      socket.broadcast.to(state.room).emit('updatestate',{state: state.state});
-      room.findOne({name: state.room}, function (err, roomobj) {
+      socket.broadcast.to(state.roomid).emit('updatestate',{state: state.state});
+      room.findOne({_id: state.roomid}, function (err, roomobj) {
         if (err) console.log("room not found");
         else {
           if (roomobj) {
@@ -103,8 +105,8 @@ io.on('connection',function (socket) {
     });
 
     socket.on('updatevideo', function(video) {
-      socket.broadcast.to(video.room).emit('updatevideo',video.videoid);
-      room.findOne({name: video.room}, function (err, room) {
+      socket.broadcast.to(video.roomid).emit('updatevideo',video.videoid);
+      room.findOne({_id: video.roomid}, function (err, room) {
         if (err) console.log("room not found");
         else {
           room.videoid=video.videoid;
@@ -116,8 +118,8 @@ io.on('connection',function (socket) {
     });
 
     socket.on('updateseek', function(seekto) {
-      socket.broadcast.to(seekto.room).emit('updateseek',seekto);
-      room.findOne({name: seekto.room}, function (err, room) {
+      socket.broadcast.to(seekto.roomid).emit('updateseek',seekto);
+      room.findOne({_id: seekto.roomid}, function (err, room) {
         if (err) console.log("room not found");
         else {
           room.seek=seekto.seek;

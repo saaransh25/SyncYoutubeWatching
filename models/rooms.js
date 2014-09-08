@@ -1,6 +1,7 @@
 var mongoose = require('mongoose');
 var roomsSchema=mongoose.Schema({
-  	name: String,
+  	name: {type: String},
+  	description: String,
   	videoid: String,
   	seek: Number,
   	state: Number,

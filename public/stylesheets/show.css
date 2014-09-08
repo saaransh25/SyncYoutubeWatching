@@ -1,0 +1,26 @@
+.showheading 
+{
+	padding-top: 0px;
+	text-align: center;
+	padding-bottom: 20px;
+}
+
+.update
+{
+	margin-top: 10px;
+	border: 2px solid;
+    border-radius: 25px;
+    overflow-y: scroll;
+    height: 450px;
+}
+
+.playerdiv
+{
+	margin-top: 10px;	
+	height: 450px;
+}
+.searchbox
+{
+
+}
+
